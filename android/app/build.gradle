@@ -1,0 +1,81 @@
+plugins {
+    id "com.android.application"
+    id "com.google.devtools.ksp"
+    id "dev.flutter.flutter-gradle-plugin"
+}
+
+import java.util.Properties
+import java.io.FileInputStream
+
+def keystoreProperties = new Properties()
+def keystorePropertiesFile = rootProject.file("key.properties")
+
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
+android {
+    namespace = "com.butterflydevs.salahmaster"
+    // এখানে আমরা ফোর্স করে ৩৬ (বা অন্তত ৩৪) রাখছি যাতে প্লাগইনের SDK এরর না আসে
+    compileSdk 36
+    ndkVersion = flutter.ndkVersion
+
+    compileOptions {
+        coreLibraryDesugaringEnabled true
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+
+    signingConfigs {
+        release {
+            keyAlias keystoreProperties['keyAlias']
+            keyPassword keystoreProperties['keyPassword']
+            storeFile file(keystoreProperties['storeFile'])
+            storePassword keystoreProperties['storePassword']
+        }
+    }
+
+    defaultConfig {
+        applicationId = "com.butterflydevs.salahmaster"
+        minSdk = 24
+        targetSdk 36
+        versionCode flutter.versionCode
+        versionName flutter.versionName
+    }
+
+    buildTypes {
+        release {
+            signingConfig signingConfigs.release
+
+            // আপনার প্রথম ফাইলে এগুলো ট্রু করা ছিল, প্রোডাকশনের জন্য এটাই বেস্ট
+            minifyEnabled true
+            shrinkResources true
+
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+}
+
+dependencies {
+    implementation "androidx.constraintlayout:constraintlayout:2.1.4"
+    implementation "androidx.appcompat:appcompat:1.6.1"
+    implementation "com.google.android.gms:play-services-location:21.0.1"
+    implementation 'com.google.android.gms:play-services-maps:18.2.0'
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'
+
+    def room_version = "2.7.0-alpha11"
+    implementation "androidx.room:room-runtime:$room_version"
+    implementation "androidx.room:room-ktx:$room_version"
+    ksp "androidx.room:room-compiler:$room_version"
+
+    def work_version = "2.9.0"
+    implementation "androidx.work:work-runtime-ktx:$work_version"
+}
+
+flutter {
+    source = "../.."
+}

@@ -1,0 +1,15 @@
+<resources>
+    <string name="alarm_title">অ্যালার্ম বাজছে</string>
+    <string name="stop_button">বন্ধ করুন</string>
+    <string name="widget_sunrise_label">🌅 সূর্যোদয়</string>
+    <string name="widget_sunset_label">🌇 সূর্যাস্ত</string>
+    <string name="next_fajr">পরবর্তী: ফজর</string>
+    <string name="fajr_ends">ফজর শেষ</string>
+    <string name="sunrise_time">সূর্যোদয়ের সময়</string>
+    <string name="next_dhuhr">পরবর্তী: যুহর</string>
+    <string name="zawal_time">যাওয়াল সময়</string>
+    <string name="dhuhr_ends">যুহর শেষ</string>
+    <string name="asr_ends">আসর শেষ</string>
+    <string name="maghrib_ends">মাগরিব শেষ</string>
+    <string name="isha_ends">ইশা শেষ</string>
+</resources>

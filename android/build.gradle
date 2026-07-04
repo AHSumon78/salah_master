@@ -1,0 +1,39 @@
+
+
+
+buildscript {
+    ext.kotlin_version = '2.2.20'// Recommended to update to a recent stable version like 1.9.20 or 2.0.0+
+    // You can check https://kotlinlang.org/docs/releases.html for the very latest stable
+    // For AGP 8.3.0, Kotlin 1.9.x series is a safe bet, and 2.x is also often compatible.
+    repositories {
+        google()
+        mavenCentral()
+    }
+
+    dependencies {
+        // Your AGP version is already 8.3.0, which is good.
+        classpath 'com.android.tools.build:gradle:8.13.2'
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+    }
+}
+plugins {
+    id 'com.google.devtools.ksp' version '2.2.20-2.0.3'
+}
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.buildDir = "../build"
+subprojects {
+    project.buildDir = "${rootProject.buildDir}/${project.name}"
+}
+subprojects {
+    project.evaluationDependsOn(":app")
+}
+
+tasks.register("clean", Delete) {
+    delete rootProject.buildDir
+}

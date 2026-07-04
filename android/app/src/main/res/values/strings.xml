@@ -1,0 +1,15 @@
+<resources>
+    <string name="alarm_title">Alarm Ringing</string>
+    <string name="stop_button">Stop</string>
+    <string name="widget_sunrise_label">🌅 SUNRISE</string>
+    <string name="widget_sunset_label">🌇 SUNSET</string>
+    <string name="next_fajr">Next: Fajr</string>
+    <string name="fajr_ends">Fajr Ends</string>
+    <string name="sunrise_time">Sunrise Time</string>
+    <string name="next_dhuhr">Next: Dhuhr</string>
+    <string name="zawal_time">Zawal Time</string>
+    <string name="dhuhr_ends">Dhuhr Ends</string>
+    <string name="asr_ends">Asr Ends</string>
+    <string name="maghrib_ends">Maghrib Ends</string>
+    <string name="isha_ends">Isha Ends</string>
+</resources>
