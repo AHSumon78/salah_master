@@ -1,7 +1,6 @@
 // lib/screens/home_screen.dart
 import 'dart:async';
 import 'dart:ui';
-import 'package:adhan_dart/adhan_dart.dart';
 import 'package:alarm/l10n/generated/app_localizations.dart';
 import 'package:alarm/managers/manual_silent_grid_tile.dart';
 import 'package:alarm/managers/widget_manager.dart';
@@ -25,9 +24,7 @@ import 'package:alarm/services/app_theme_extension.dart';
 import 'package:alarm/managers/dua_manager.dart';
 import 'package:alarm/managers/islamic_event_manager.dart';
 import 'package:alarm/managers/prayer_time_manager.dart';
-import 'package:alarm/services/alarm_scheduler_service.dart';
-import 'package:alarm/services/daily_once.dart';
-import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
+import 'package:flutter/cupertino.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -35,7 +32,6 @@ import 'package:alarm/models/AppSettings.dart';
 import 'package:alarm/models/Location.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:alarm/services/prayer_calculation_settings.dart';
 
 // ---------------------------------------------------------------------------
 // Isolated alarm card — RepaintBoundary prevents neighbour repaints
@@ -100,7 +96,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return;
     }
 
-    await _initializeWidgetScheduler();
+    //await _initializeWidgetScheduler();
     await _permissionHelper.requestPermissionsOnFirstLaunch();
     if (await _permissionHelper.areAllPermissionsGranted()) {
       _startAlarmAndService();
@@ -122,37 +118,37 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (mounted) setState(() {});
   }
 
-  Future<void> _initializeWidgetScheduler() async {
-    final isAndroid = defaultTargetPlatform == TargetPlatform.android;
-    if (!isAndroid) return;
-
-    if (!await shouldRunToday()) {
-      print("Widget scheduler already set today.");
-      return;
-    }
-
-    final prefs = await SharedPreferences.getInstance();
-    if (!prefs.containsKey('is_notification_on')) {
-      await prefs.setBool('is_notification_on', true);
-    }
-    if (!prefs.containsKey('scheduler_enabled')) {
-      await prefs.setBool('scheduler_enabled', true);
-    }
-    final enabled = prefs.getBool('scheduler_enabled') ?? true;
-
-    if (!enabled) return;
-    final ok = await AndroidAlarmManager.oneShotAt(
-      getNextSchedulerTime(),
-      1,
-      dailySchedulerDispatcher,
-      exact: true,
-      wakeup: true,
-      allowWhileIdle: true,
-      rescheduleOnReboot: true,
-      alarmClock: true,
-    );
-    print("Widget scheduler set = $ok");
-  }
+  // Future<void> _initializeWidgetScheduler() async {
+  //   final isAndroid = defaultTargetPlatform == TargetPlatform.android;
+  //   if (!isAndroid) return;
+  //
+  //   if (!await shouldRunToday()) {
+  //     print("Widget scheduler already set today.");
+  //     return;
+  //   }
+  //
+  //   final prefs = await SharedPreferences.getInstance();
+  //   if (!prefs.containsKey('is_notification_on')) {
+  //     await prefs.setBool('is_notification_on', true);
+  //   }
+  //   if (!prefs.containsKey('scheduler_enabled')) {
+  //     await prefs.setBool('scheduler_enabled', true);
+  //   }
+  //   final enabled = prefs.getBool('scheduler_enabled') ?? true;
+  //
+  //   if (!enabled) return;
+  //   final ok = await AndroidAlarmManager.oneShotAt(
+  //     getNextSchedulerTime(),
+  //     1,
+  //     dailySchedulerDispatcher,
+  //     exact: true,
+  //     wakeup: true,
+  //     allowWhileIdle: true,
+  //     rescheduleOnReboot: true,
+  //     alarmClock: true,
+  //   );
+  //   print("Widget scheduler set = $ok");
+  // }
 
   void _loadWebPreviewSunMoonTracker() {
     if (!mounted) return;
@@ -169,12 +165,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     });
   }
 
-  void _recomputeSunMoon() {
+  void _recomputeSunMoon() async {
     if (_currentLocation == null) return;
-    sunMoonData = SunMoonData.compute(
+
+    // 🛰️ মেথড চ্যানেলের মাধ্যমে নেটিভ থেকে ডাটা আনা হচ্ছে
+    final data = await SunMoonData.fetch(
       _currentLocation!.latitude,
       _currentLocation!.longitude,
     );
+
+    // ডাটা সাকসেসফুলি আসলে UI স্টেট আপডেট করা হচ্ছে
+    if (data != null) {
+      setState(() {
+        sunMoonData = data;
+      });
+    }
   }
 
   @override
@@ -332,69 +337,63 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<bool> _syncInactiveAlarmsWithPrayerTimes(
       Location location, List<Alarm> alarmList) async {
     final prefs = await SharedPreferences.getInstance();
-    final isFirstTime = prefs.getString('is_first_time_sync') ?? 'true';
-    if (isFirstTime == 'true') {
-      await prefs.setString('is_first_time_sync', 'false');
-      // প্রথমবারের জন্য কোনো আপডেট করা হবে না
 
-      final now = DateTime.now();
-      final coords = Coordinates(location.latitude, location.longitude);
+    // শুধুমাত্র Madhab পরিবর্তনের ওপর ভিত্তি করে চেক করা হচ্ছে
+    final isMadhabChanged = prefs.getBool('is_madhab_changed') ?? false;
 
-      // 🔥 নতুন সেটিংস থেকে Madhab + Calculation Method নেওয়া হচ্ছে
-      final params = await getSavedPrayerCalculationParameters();
+    // যদি মযহাব চেঞ্জ হয়, শুধুমাত্র তখনই সিঙ্ক হবে
+    if (isMadhabChanged) {
+      // কাজ শুরু করার আগেই ফ্ল্যাগটি false করে দিন (যাতে একবারই সিঙ্ক হয়)
+      await prefs.setBool('is_madhab_changed', false);
 
-      // adhan_dart দিয়ে আজকের নামাজের সময় ক্যালকুলেট করা
-      final pt = PrayerTimes(
-        coordinates: coords,
-        date: now,
-        calculationParameters: params,
-        precision: true,
-      );
+      try {
+        const channel = MethodChannel('com.butterflydevs.salahmaster/db');
 
-      bool hasAnyChange = false;
+        final String madhab = prefs.getString('prayer_madhab') ?? 'hanafi';
 
-      for (var alarm in alarmList) {
-        if (!alarm.isActive) {
-          DateTime? prayerDateTime;
+        final Map<dynamic, dynamic>? nativePrayerTimes =
+            await channel.invokeMethod('getTodayPrayerTimes', {
+          'lat': location.latitude,
+          'lng': location.longitude,
+          'madhab': madhab,
+        });
 
-          switch (alarm.title?.toLowerCase()) {
-            case 'fajr':
-              prayerDateTime = pt.fajr.toLocal();
-              break;
-            case 'sunrise':
-              prayerDateTime = pt.sunrise.toLocal();
-              break;
-            case 'dhuhr':
-              prayerDateTime = pt.dhuhr.toLocal();
-              break;
-            case 'asr':
-              prayerDateTime = pt.asr.toLocal();
-              break;
-            case 'maghrib':
-              prayerDateTime = pt.maghrib.toLocal();
-              break;
-            case 'isha':
-              prayerDateTime = pt.isha.toLocal();
-              break;
-          }
+        if (nativePrayerTimes == null) return false;
 
-          if (prayerDateTime != null) {
-            if (alarm.alarmTime.hour != prayerDateTime.hour ||
-                alarm.alarmTime.minute != prayerDateTime.minute) {
-              alarm.alarmTime = TimeOfDay(
-                hour: prayerDateTime.hour,
-                minute: prayerDateTime.minute,
-              );
+        bool hasAnyChange = false;
 
-              await NativeDB.updateAlarm(alarm);
-              hasAnyChange = true;
+        for (var alarm in alarmList) {
+          if (!alarm.isActive) {
+            final alarmTitle = alarm.title?.toLowerCase();
+            final int? prayerTimestamp =
+                nativePrayerTimes['${alarmTitle}_time'];
+
+            if (prayerTimestamp != null) {
+              final prayerDateTime =
+                  DateTime.fromMillisecondsSinceEpoch(prayerTimestamp)
+                      .toLocal();
+
+              if (alarm.alarmTime.hour != prayerDateTime.hour ||
+                  alarm.alarmTime.minute != prayerDateTime.minute) {
+                alarm.alarmTime = TimeOfDay(
+                  hour: prayerDateTime.hour,
+                  minute: prayerDateTime.minute,
+                );
+
+                await NativeDB.updateAlarm(alarm);
+                hasAnyChange = true;
+              }
             }
           }
         }
+        return hasAnyChange;
+      } catch (e) {
+        print("Error syncing alarms via MethodChannel: $e");
+        return false;
       }
-
-      return hasAnyChange;
     }
+
+    // যদি মযহাব চেঞ্জ না হয়ে থাকে, তবে সিঙ্ক করার প্রয়োজন নেই
     return false;
   }
 
@@ -608,7 +607,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
                         if (!ok) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                           const SnackBar(
+                            const SnackBar(
                               content: Text(
                                 "Your device doesn't support adding widgets directly. "
                                 "Please add it from the Home Screen widget picker.",
@@ -668,193 +667,207 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ),
       ),
       body: AppBackground(
-        child: CustomScrollView(
-          physics: const ClampingScrollPhysics(),
-          slivers: [
-            // 1. Sun/Moon Tracker — isolated widget, animates without touching list
-            SliverToBoxAdapter(
-              child: sunMoonData == null
-                  ? const Center(
-                      // 👈 এই Center উইজেটটি পুরো স্ক্রিনে ছড়ানো বন্ধ করবে এবং মাঝখানে আনবে
-                      child: SizedBox(
-                        height: 100,
-                        width: 100,
-                        child: CircularProgressIndicator(),
-                      ),
-                    )
-                  : SunMoonTracker(data: sunMoonData!),
-            ),
-            SliverToBoxAdapter(
-                child: GridView.count(
-              crossAxisCount: 3, // ২ কলামের সমান চারকোনা বক্স গ্রিড
-              crossAxisSpacing: 1,
-              mainAxisSpacing: 1,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              children: [
-                const ManualSilentGridTile(),
-                PrayerTimeManager.buildNextPrayerGridTile(),
-                const HijriCalendarTile(),
-                AllahNamesManager.buildAllahNamesGridTile(context),
-                DuaManager.buildDuaGridTile(context),
-                IslamicEventManager.buildCountdownGridTile(context),
-              ],
-            )),
-
-            // 2. Pre-alarm card
-            SliverToBoxAdapter(
-              child: AppCard(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16.0, vertical: 12.0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Flexible(
-                        child: Text(
-                          '${lang.ringPrayer} ',
-                          style: const TextStyle(
-                              fontSize: 15, fontWeight: FontWeight.w600),
-                          softWrap: true,
-                          overflow: TextOverflow.ellipsis,
+        child: RefreshIndicator(
+          onRefresh: () async {
+            debugPrint('Refreshing triggered');
+            await _initializeAppDataOnStartup();
+          },
+          child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+              CupertinoSliverRefreshControl(
+                onRefresh: () async {
+                  // এখানে আপনার রিফ্রেশ লজিক
+                  debugPrint('Refreshing data...');
+                  await _initializeAppDataOnStartup();
+                },
+              ),
+              // 1. Sun/Moon Tracker — isolated widget, animates without touching list
+              SliverToBoxAdapter(
+                child: sunMoonData == null
+                    ? const Center(
+                        // 👈 এই Center উইজেটটি পুরো স্ক্রিনে ছড়ানো বন্ধ করবে এবং মাঝখানে আনবে
+                        child: SizedBox(
+                          height: 100,
+                          width: 100,
+                          child: CircularProgressIndicator(),
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // 🛠️ এখানে ক্লিক করলে টাইম স্ক্রোলার বটমশীট ওপেন হবে
-                          InkWell(
-                            onTap: () => _showMinuteScroller(context),
-                            borderRadius: BorderRadius.circular(24),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 14, vertical: 8),
-                              decoration: BoxDecoration(
-                                color: Colors.teal.shade50,
-                                borderRadius: BorderRadius.circular(24),
-                                border: Border.all(
-                                    color: Colors.teal.shade100, width: 1.5),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.teal.shade100
-                                        .withValues(alpha: 0.3),
-                                    blurRadius: 4,
-                                    offset: const Offset(0, 2),
-                                  ),
-                                ],
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(Icons.alarm,
-                                      size: 16, color: Colors.teal),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    // কারেন্ট ভ্যালু দেখাবে (ডিফল্ট ০ বা ৫)
-                                    int.tryParse(_preAlarmController.text)
-                                            ?.toString() ??
-                                        '0',
-                                    style: const TextStyle(
-                                        color: Colors.teal,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 14),
-                                  ),
-                                  const SizedBox(width: 2),
-                                  const Icon(Icons.arrow_drop_down,
-                                      color: Colors.teal, size: 16),
-                                ],
+                      )
+                    : SunMoonTracker(data: sunMoonData!),
+              ),
+              SliverToBoxAdapter(
+                  child: GridView.count(
+                crossAxisCount: 3, // ২ কলামের সমান চারকোনা বক্স গ্রিড
+                crossAxisSpacing: 1,
+                mainAxisSpacing: 1,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                children: [
+                  const ManualSilentGridTile(),
+                  PrayerTimeManager.buildNextPrayerGridTile(),
+                  const HijriCalendarTile(),
+                  AllahNamesManager.buildAllahNamesGridTile(context),
+                  DuaManager.buildDuaGridTile(context),
+                  IslamicEventManager.buildCountdownGridTile(context),
+                ],
+              )),
+
+              // 2. Pre-alarm card
+              SliverToBoxAdapter(
+                child: AppCard(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16.0, vertical: 12.0),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            '${lang.ringPrayer} ',
+                            style: const TextStyle(
+                                fontSize: 15, fontWeight: FontWeight.w600),
+                            softWrap: true,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // 🛠️ এখানে ক্লিক করলে টাইম স্ক্রোলার বটমশীট ওপেন হবে
+                            InkWell(
+                              onTap: () => _showMinuteScroller(context),
+                              borderRadius: BorderRadius.circular(24),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 14, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: Colors.teal.shade50,
+                                  borderRadius: BorderRadius.circular(24),
+                                  border: Border.all(
+                                      color: Colors.teal.shade100, width: 1.5),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.teal.shade100
+                                          .withValues(alpha: 0.3),
+                                      blurRadius: 4,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.alarm,
+                                        size: 16, color: Colors.teal),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      // কারেন্ট ভ্যালু দেখাবে (ডিফল্ট ০ বা ৫)
+                                      int.tryParse(_preAlarmController.text)
+                                              ?.toString() ??
+                                          '0',
+                                      style: const TextStyle(
+                                          color: Colors.teal,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 14),
+                                    ),
+                                    const SizedBox(width: 2),
+                                    const Icon(Icons.arrow_drop_down,
+                                        color: Colors.teal, size: 16),
+                                  ],
+                                ),
                               ),
                             ),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            '${lang.min} ${lang.before}',
-                            style:const TextStyle(fontSize: 16, color: Colors.grey),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-
-            // 3. Alarm list
-            if (_currentLocation == null)
-              const SliverFillRemaining(
-                child: Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      CircularProgressIndicator(color: Colors.teal),
-                      SizedBox(height: 16),
-                      Text(
-                        'Loading locations and alarms...',
-                        style: TextStyle(fontSize: 18, color: Colors.grey),
-                      ),
-                    ],
-                  ),
-                ),
-              )
-            else if (_isLoadingAlarms)
-              SliverPadding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                sliver: SliverList(
-                  delegate: SliverChildBuilderDelegate(
-                    (_, __) => const SkeletonCard(),
-                    childCount: 6,
-                  ),
-                ),
-              )
-            else if (_alarms.isEmpty)
-              SliverFillRemaining(
-                child: Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24.0),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.alarm_off,
-                            size: 60, color: Colors.grey[400]),
-                        const SizedBox(height: 16),
-                        Text(
-                          'No prayer alarms set for '
-                          '${_currentLocation!.name} yet.'
-                          ' Default prayer times will appear here.',
-                          textAlign: TextAlign.center,
-                          style:
-                              TextStyle(fontSize: 18, color: Colors.grey[600]),
+                            const SizedBox(width: 8),
+                            Text(
+                              '${lang.min} ${lang.before}',
+                              style: const TextStyle(
+                                  fontSize: 16, color: Colors.grey),
+                            ),
+                          ],
                         ),
                       ],
                     ),
                   ),
                 ),
-              )
-            else
-              SliverPadding(
-                padding: const EdgeInsets.only(
-                    left: 0, right: 0, top: 0, bottom: 100.0),
-                sliver: SliverList(
-                  // FIX: childCount = _visibleCount so Flutter never builds
-                  // invisible items at all (no SizedBox.shrink waste).
-                  delegate: SliverChildBuilderDelegate(
-                    (_, index) {
-                      final alarm = _alarms[index];
-                      return AlarmCard(
-                        key: ValueKey(
-                            alarm.id), // stable key prevents re-creation
-                        alarm: alarm,
-                        onTapTime: () => _selectTime(context, alarm),
-                        onTapSound: () => _selectSound(context, alarm),
-                        onToggle: (v) => _onToggleAlarm(alarm, v),
-                      );
-                    },
-                    childCount: _visibleCount.clamp(0, _alarms.length),
+              ),
+
+              // 3. Alarm list
+              if (_currentLocation == null)
+                const SliverFillRemaining(
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        CircularProgressIndicator(color: Colors.teal),
+                        SizedBox(height: 16),
+                        Text(
+                          'Loading locations and alarms...',
+                          style: TextStyle(fontSize: 18, color: Colors.grey),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              else if (_isLoadingAlarms)
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  sliver: SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (_, __) => const SkeletonCard(),
+                      childCount: 6,
+                    ),
+                  ),
+                )
+              else if (_alarms.isEmpty)
+                SliverFillRemaining(
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24.0),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.alarm_off,
+                              size: 60, color: Colors.grey[400]),
+                          const SizedBox(height: 16),
+                          Text(
+                            'No prayer alarms set for '
+                            '${_currentLocation!.name} yet.'
+                            ' Default prayer times will appear here.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                                fontSize: 18, color: Colors.grey[600]),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                )
+              else
+                SliverPadding(
+                  padding: const EdgeInsets.only(
+                      left: 0, right: 0, top: 0, bottom: 100.0),
+                  sliver: SliverList(
+                    // FIX: childCount = _visibleCount so Flutter never builds
+                    // invisible items at all (no SizedBox.shrink waste).
+                    delegate: SliverChildBuilderDelegate(
+                      (_, index) {
+                        final alarm = _alarms[index];
+                        return AlarmCard(
+                          key: ValueKey(
+                              alarm.id), // stable key prevents re-creation
+                          alarm: alarm,
+                          onTapTime: () => _selectTime(context, alarm),
+                          onTapSound: () => _selectSound(context, alarm),
+                          onToggle: (v) => _onToggleAlarm(alarm, v),
+                        );
+                      },
+                      childCount: _visibleCount.clamp(0, _alarms.length),
+                    ),
                   ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );

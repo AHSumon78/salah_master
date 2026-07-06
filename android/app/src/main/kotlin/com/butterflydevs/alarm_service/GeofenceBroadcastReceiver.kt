@@ -59,60 +59,46 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
     private fun setRingerMode(context: Context, isSilent: Boolean) {
         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val prefs = context.getSharedPreferences("GeofencePrefs", Context.MODE_PRIVATE)
 
         try {
-            // ১. DND পারমিশন চেক (Android 6.0+)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                if (!notificationManager.isNotificationPolicyAccessGranted) {
-                    val intent = Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)
-                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    context.startActivity(intent)
-                    return
-                }
+                if (!notificationManager.isNotificationPolicyAccessGranted) return
             }
 
             if (isSilent) {
-                // ২. রিংগার মোড পরিবর্তন (Layer 1)
-                // সরাসরি সাইলেন্ট ট্রাই করবে, সিকিউরিটি এরর খেলে ভাইব্রেট মোড ট্রাই করবে
-                try {
-                    audioManager.ringerMode = AudioManager.RINGER_MODE_SILENT
-                } catch (e: Exception) {
-                    audioManager.ringerMode = AudioManager.RINGER_MODE_VIBRATE
-                }
+                // ১. সাইলেন্ট করার আগে বর্তমান স্টেট সেভ করা
+                prefs.edit().apply {
+                    putInt("saved_ringer_mode", audioManager.ringerMode)
+                    putInt("saved_ring_vol", audioManager.getStreamVolume(AudioManager.STREAM_RING))
+                    putInt("saved_music_vol", audioManager.getStreamVolume(AudioManager.STREAM_MUSIC))
+                    putInt("saved_notif_vol", audioManager.getStreamVolume(AudioManager.STREAM_NOTIFICATION))
+                }.apply()
 
-                // ৩. ভলিউম মিউট করা (Layer 2) - এটিই আসল কাজ করবে যদি উপরেরটি ফেইল করে
-                // STREAM_RING সেট করলে অনেক ফোনে নোটিফিকেশনও অটোমেটিক জিরো হয়
+                // ২. সাইলেন্ট মোডে নেওয়া
+                audioManager.ringerMode = AudioManager.RINGER_MODE_SILENT
                 audioManager.setStreamVolume(AudioManager.STREAM_RING, 0, 0)
                 audioManager.setStreamVolume(AudioManager.STREAM_NOTIFICATION, 0, 0)
-                audioManager.setStreamVolume(AudioManager.STREAM_SYSTEM, 0, 0)
-
-                // ৪. আধুনিক অ্যান্ড্রয়েডে মিউট করা (Layer 3) - Android 7.0+
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    audioManager.adjustStreamVolume(AudioManager.STREAM_RING, AudioManager.ADJUST_MUTE, 0)
-                    audioManager.adjustStreamVolume(AudioManager.STREAM_NOTIFICATION, AudioManager.ADJUST_MUTE, 0)
-                }
-
-                Log.d("RingerMode", "Silent enabled using Triple Layer protection")
+                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, 0, 0) // মিডিয়া মিউট
+                
+                Log.d("RingerMode", "Saved states and set Silent")
 
             } else {
-                // ৫. নরমাল মোডে ফেরানো
-                audioManager.ringerMode = AudioManager.RINGER_MODE_NORMAL
+                // ৩. সেভ করা স্টেট রিস্টোর করা
+                val savedRingerMode = prefs.getInt("saved_ringer_mode", AudioManager.RINGER_MODE_NORMAL)
+                val savedRingVol = prefs.getInt("saved_ring_vol", audioManager.getStreamMaxVolume(AudioManager.STREAM_RING) / 2)
+                val savedMusicVol = prefs.getInt("saved_music_vol", audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC) / 2)
+                val savedNotifVol = prefs.getInt("saved_notif_vol", audioManager.getStreamMaxVolume(AudioManager.STREAM_NOTIFICATION) / 2)
 
-                // মিউট তুলে দেওয়া
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    audioManager.adjustStreamVolume(AudioManager.STREAM_RING, AudioManager.ADJUST_UNMUTE, 0)
-                    audioManager.adjustStreamVolume(AudioManager.STREAM_NOTIFICATION, AudioManager.ADJUST_UNMUTE, 0)
-                }
+                audioManager.ringerMode = savedRingerMode
+                audioManager.setStreamVolume(AudioManager.STREAM_RING, savedRingVol, 0)
+                audioManager.setStreamVolume(AudioManager.STREAM_NOTIFICATION, savedNotifVol, 0)
+                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, savedMusicVol, 0)
 
-                // ভলিউম আগের অবস্থায় (৫০%) ফিরিয়ে আনা
-                val maxRing = audioManager.getStreamMaxVolume(AudioManager.STREAM_RING)
-                val seventyFivePercent = (maxRing * 0.75).toInt()
-                audioManager.setStreamVolume(AudioManager.STREAM_RING, seventyFivePercent, 0)
-
-                Log.d("RingerMode", "Normal mode restored")
+                Log.d("RingerMode", "Restored previous volumes")
             }
         } catch (e: Exception) {
-            Log.e("RingerMode", "Critical Error: ${e.message}")
+            Log.e("RingerMode", "Error: ${e.message}")
         }
     }
 

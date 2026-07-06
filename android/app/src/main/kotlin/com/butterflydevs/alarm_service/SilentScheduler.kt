@@ -1,3 +1,6 @@
+
+
+
 package com.butterflydevs.salahmaster.alarm_service
 
 import android.app.AlarmManager
@@ -6,36 +9,32 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import com.butterflydevs.salahmaster.data.AlarmDao
-import com.butterflydevs.salahmaster.alarm_service.AlarmScheduler
-
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.util.Calendar
-import com.butterflydevs.salahmaster.MainActivity
-
 
 object SilentScheduler {
 
-    private const val BASE_SILENT_REQUEST_CODE = 99000
+    private const val SILENT_REQUEST_CODE = 99500
 
-    fun scheduleAllSilentTimes(
+    fun scheduleNextSilentTime(
         context: Context,
         alarmDao: AlarmDao,
         locationId: Int
     ) {
-
-        val alarmManager =
-            context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
 
         CoroutineScope(Dispatchers.IO).launch {
-
             val alarms = alarmDao.getAlarmsByLocation(locationId)
+            if (alarms.isEmpty()) return@launch
 
             val now = Calendar.getInstance()
+            var nextTriggerTime = Long.MAX_VALUE
+            var targetAlarmId = -1
 
+            // 🔍 লুপ চালিয়ে শুধুমাত্র সবচেয়ে কাছের (Next Closest) সময়টি বের করা হচ্ছে
             alarms.forEach { alarm ->
-
                 val calendar = Calendar.getInstance().apply {
                     set(Calendar.HOUR_OF_DAY, alarm.hour)
                     set(Calendar.MINUTE, alarm.minute)
@@ -43,117 +42,63 @@ object SilentScheduler {
                     set(Calendar.MILLISECOND, 0)
 
                     if (before(now)) {
-                        add(Calendar.DAY_OF_YEAR, 1)
+                        add(Calendar.DAY_OF_YEAR, 1) // সময় পার হয়ে গেলে আগামীকালের হিসাব
                     }
                 }
 
-                val triggerTime = calendar.timeInMillis
+                val timeInMillis = calendar.timeInMillis
+                if (timeInMillis < nextTriggerTime) {
+                    nextTriggerTime = timeInMillis
+                    targetAlarmId = alarm.id
+                }
+            }
 
-                val requestCode = BASE_SILENT_REQUEST_CODE + alarm.id
-
-                val intent = Intent(
-                    context,
-                    AutoSilentSchedulerReceiver::class.java
-                ).apply {
-                    putExtra("REQUEST_CODE", requestCode)
+            if (targetAlarmId != -1 && nextTriggerTime != Long.MAX_VALUE) {
+                val intent = Intent(context, AutoSilentSchedulerReceiver::class.java).apply {
+                    putExtra("REQUEST_CODE", SILENT_REQUEST_CODE)
                     putExtra("LOCATION_ID", locationId)
+                    putExtra("ALARM_ID", targetAlarmId)
+                    addFlags(Intent.FLAG_RECEIVER_FOREGROUND) // 🌟 ওএস-কে হাই প্রায়োরিটি পুশ দেবে
                 }
 
                 val pendingIntent = PendingIntent.getBroadcast(
                     context,
-                    requestCode,
+                    SILENT_REQUEST_CODE,
                     intent,
-                    PendingIntent.FLAG_UPDATE_CURRENT or
-                            PendingIntent.FLAG_IMMUTABLE
-                )
-
-                // Prevent duplicate alarms
-                alarmManager.cancel(pendingIntent)
-
-                val showIntent = Intent(context, MainActivity::class.java)
-
-                val showPendingIntent = PendingIntent.getActivity(
-                    context,
-                    requestCode,
-                    showIntent,
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                 )
 
-                alarmManager.setAlarmClock(
-                    AlarmManager.AlarmClockInfo(
-                        triggerTime,
-                        showPendingIntent
-                    ),
-                    pendingIntent
-                )
-
-                // 10 minutes before silent notification
-                AlarmScheduler.schedulePreAlarm(
-                    context = context,
-                    alarm = alarm,
-                    triggerTime = triggerTime,
-                    alarmManager = alarmManager,
-                    isJammat = true
-                )
+                // 👑 setExactAndAllowWhileIdle ব্যবহার—যা ডিলে মুক্ত এবং ডোজ মোড ব্রেক করতে পারে
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    alarmManager.setExactAndAllowWhileIdle(
+                        AlarmManager.RTC_WAKEUP,
+                        nextTriggerTime,
+                        pendingIntent
+                    )
+                } else {
+                    alarmManager.setExact(
+                        AlarmManager.RTC_WAKEUP,
+                        nextTriggerTime,
+                        pendingIntent
+                    )
+                }
             }
         }
     }
 
-    fun cancelAllSilentAlarms(
-        context: Context,
-        alarmDao: AlarmDao,
-        locationId: Int
-    ) {
+    fun cancelSilentAlarm(context: Context) {
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val intent = Intent(context, AutoSilentSchedulerReceiver::class.java)
+        val pendingIntent = PendingIntent.getBroadcast(
+            context,
+            SILENT_REQUEST_CODE,
+            intent,
+            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
+        )
 
-        val alarmManager =
-            context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-
-        CoroutineScope(Dispatchers.IO).launch {
-
-            val alarms = alarmDao.getAlarmsByLocation(locationId)
-
-            alarms.forEach { alarm ->
-
-                val requestCode = BASE_SILENT_REQUEST_CODE + alarm.id
-
-                // Silent Alarm
-                val silentIntent = Intent(
-                    context,
-                    AutoSilentSchedulerReceiver::class.java
-                )
-
-                val silentPendingIntent = PendingIntent.getBroadcast(
-                    context,
-                    requestCode,
-                    silentIntent,
-                    PendingIntent.FLAG_NO_CREATE or
-                            PendingIntent.FLAG_IMMUTABLE
-                )
-
-                silentPendingIntent?.let {
-                    alarmManager.cancel(it)
-                    it.cancel()
-                }
-
-                // Cancel Pre Alarm Reminder
-                val preIntent = Intent(
-                    context,
-                    PreAlarmReceiver::class.java
-                )
-
-                val prePendingIntent = PendingIntent.getBroadcast(
-                    context,
-                    alarm.id + 99999,
-                    preIntent,
-                    PendingIntent.FLAG_NO_CREATE or
-                            PendingIntent.FLAG_IMMUTABLE
-                )
-
-                prePendingIntent?.let {
-                    alarmManager.cancel(it)
-                    it.cancel()
-                }
-            }
+        pendingIntent?.let {
+            alarmManager.cancel(it)
+            it.cancel()
         }
     }
 }

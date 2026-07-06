@@ -17,7 +17,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-
+import java.util.Calendar
 import android.app.AlarmManager
 import android.app.NotificationManager
 import android.content.Intent
@@ -491,6 +491,41 @@ class DatabaseMethodChannel(
                             }
                         }
                     }
+                    "getTodayPrayerTimes" -> {
+                        val lat = call.argument<Double>("lat")
+                        val lng = call.argument<Double>("lng")
+
+                        if (lat != null && lng != null) {
+                            CoroutineScope(Dispatchers.IO).launch {
+                                try {
+                                    // PrayerTimeHelper ব্যবহার করে ক্যালকুলেশন
+                                    val prayerTimeHelper = PrayerTimeHelper(lat, lng, context)
+                                    val calendar = Calendar.getInstance()
+                                    val pt = prayerTimeHelper.getRawPrayerTimes(calendar)
+
+                                    // মিলিসেকেন্ড টাইমস্ট্যাম্প ম্যাপ তৈরি
+                                    val resultMap = mapOf(
+                                        "fajr_time" to pt.fajr.time,
+                                        "sunrise_time" to pt.sunrise.time,
+                                        "dhuhr_time" to pt.dhuhr.time,
+                                        "asr_time" to pt.asr.time,
+                                        "maghrib_time" to pt.maghrib.time,
+                                        "isha_time" to pt.isha.time
+                                    )
+
+                                    withContext(Dispatchers.Main) {
+                                        result.success(resultMap)
+                                    }
+                                } catch (e: Exception) {
+                                    withContext(Dispatchers.Main) {
+                                        result.error("CALCULATION_ERROR", e.message, null)
+                                    }
+                                }
+                            }
+                        } else {
+                            result.error("INVALID_ARGUMENTS", "Latitude or Longitude is null", null)
+                        }
+                    }
                     "getSettings" -> {
                         CoroutineScope(Dispatchers.IO).launch {
                             try {
@@ -784,7 +819,7 @@ class DatabaseMethodChannel(
                                 val settings = settingsDao.getSettings()
                                 val locationId = settings?.currentLocationId ?: 1  // ডিফল্ট 1
 
-                                SilentScheduler.scheduleAllSilentTimes(context, db.alarmDao(), locationId)
+                                SilentScheduler.scheduleNextSilentTime(context, db.alarmDao(), locationId)
                                 
                                 withContext(Dispatchers.Main) {
                                     result.success(true)
@@ -800,14 +835,9 @@ class DatabaseMethodChannel(
                     "cancelAllSilentTimes" -> {
                         CoroutineScope(Dispatchers.IO).launch {
 
-                        try {
-                            
-                            val settingsDao = db.settingsDao()
-                            
-                            val settings = settingsDao.getSettings()
-                            val locationId = settings?.currentLocationId ?: 1   // ডিফল্ট ১
+                        try { // ডিফল্ট ১
 
-                            SilentScheduler.cancelAllSilentAlarms(context, db.alarmDao(), locationId)
+                            SilentScheduler.cancelSilentAlarm(context)
                             
                         withContext(Dispatchers.Main) {
                                     result.success(true)

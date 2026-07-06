@@ -6,9 +6,7 @@ import 'package:alarm/screens/commons/appBar_background.dart';
 import 'package:alarm/screens/commons/app_background.dart';
 import 'package:alarm/services/NativeDB.dart';
 import 'package:alarm/services/alarm_permission_helper.dart';
-import 'package:alarm/services/alarm_scheduler_service.dart';
 import 'package:alarm/services/prayer_calculation_settings.dart';
-import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -39,8 +37,8 @@ class _SettingsScreenState extends State<SettingsScreen>
   int _snoozeTime = 3;
   int _snoozeDuration = 5;
   int _autoStopMinutes = 10;
-  bool _widgetsUpdate = true;
-  bool _schedulerEnabled = true;
+  //bool _widgetsUpdate = true;
+  //bool _schedulerEnabled = true;
   String _prayerCalculationMethod = 'muslim_world_league';
   String _prayerMadhab = 'hanafi';
   int _silentDuration = 30;
@@ -84,12 +82,12 @@ class _SettingsScreenState extends State<SettingsScreen>
       _preAlarmReminder = data["pre_alarm_reminder"] ?? true;
       _autoSilent = data["auto_silent_location"] ?? true;
       _autoSilentSchedule = data["auto_silent_by_alarm"] ?? false;
-      _widgetsUpdate = prefs.getBool('is_notification_on') ?? true;
-      _schedulerEnabled = prefs.getBool('scheduler_enabled') ?? true;
+      //_widgetsUpdate = prefs.getBool('is_notification_on') ?? true;
+      //_schedulerEnabled = prefs.getBool('scheduler_enabled') ?? true;
       _prayerCalculationMethod =
           prefs.getString('prayer_calculation_method') ?? 'muslim_world_league';
       _prayerMadhab = prefs.getString('prayer_madhab') ?? 'hanafi';
-       _silentDuration = prefs.getInt("silent_duration") ?? 30;
+      _silentDuration = prefs.getInt("silent_duration") ?? 30;
     });
   }
 
@@ -100,15 +98,15 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 
   Future<void> _saveSilentDuration(int value) async {
-  final prefs = await SharedPreferences.getInstance();
+    final prefs = await SharedPreferences.getInstance();
 
-  await prefs.setInt("silent_duration", value);
-  await _timeBaseSilent(); // Update silent times based on the new duration
+    await prefs.setInt("silent_duration", value);
+    await _timeBaseSilent(); // Update silent times based on the new duration
 
-  setState(() {
-    _silentDuration = value;
-  });
-}
+    setState(() {
+      _silentDuration = value;
+    });
+  }
 
   // ================= LOAD PERMISSIONS =================
   Future<void> _loadPermissionStatus() async {
@@ -382,30 +380,30 @@ class _SettingsScreenState extends State<SettingsScreen>
                     },
                   ),
                 ),
-              SwitchListTile(
-                title: Text(lang.widgetUpdate),
-                value: _widgetsUpdate,
-                onChanged: (val) async {
-                  setState(() {
-                    _widgetsUpdate = val;
-                  });
-                  final prefs = await SharedPreferences.getInstance();
-                  await prefs.setBool('is_notification_on', _widgetsUpdate);
-                },
-              ),
-              SwitchListTile(
-                title: const Text('Widget scheduler'),
-                subtitle: const Text('Auto update home screen widget'),
-                value: _schedulerEnabled,
-                onChanged: (val) async {
-                  setState(() => _schedulerEnabled = val);
-                  if (val) {
-                    await enableScheduler();
-                  } else {
-                    await disableScheduler();
-                  }
-                },
-              ),
+              // SwitchListTile(
+              //   title: Text(lang.widgetUpdate),
+              //   value: _widgetsUpdate,
+              //   onChanged: (val) async {
+              //     setState(() {
+              //       _widgetsUpdate = val;
+              //     });
+              //     final prefs = await SharedPreferences.getInstance();
+              //     await prefs.setBool('is_notification_on', _widgetsUpdate);
+              //   },
+              // ),
+              // SwitchListTile(
+              //   title: const Text('Widget scheduler'),
+              //   subtitle: const Text('Auto update home screen widget'),
+              //   value: _schedulerEnabled,
+              //   onChanged: (val) async {
+              //     setState(() => _schedulerEnabled = val);
+              //     if (val) {
+              //       //await enableScheduler();
+              //     } else {
+              //       // await disableScheduler();
+              //     }
+              //   },
+              // ),
               // Prayer Madhab
               ListTile(
                 title: const Text("Madhab"),
@@ -422,7 +420,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                       setState(() {
                         _prayerMadhab = newValue;
                       });
-
+                      final prefs = await SharedPreferences.getInstance();
+                      await prefs.setBool('is_madhab_changed', true);
                       await savePrayerMadhabCode(newValue);
 
                       // প্রেয়ার টাইমার রিফ্রেশ
@@ -545,7 +544,6 @@ class _SettingsScreenState extends State<SettingsScreen>
                   _permissionHelper.requestAudioPermission,
                 ),
               ),
-              
             ],
           ),
         ),
@@ -592,53 +590,6 @@ class _SettingsScreenState extends State<SettingsScreen>
           color: Theme.of(context).colorScheme.primary,
         ),
       ),
-    );
-  }
-
-  Future<void> disableScheduler() async {
-    final prefs = await SharedPreferences.getInstance();
-
-    await prefs.setBool('scheduler_enabled', false);
-
-    // Main scheduler cancel
-    await AndroidAlarmManager.cancel(1);
-
-    // Prayer alarms cancel
-    for (final id in [
-      101,
-      102,
-      103,
-      104,
-      105,
-      106,
-      107,
-      108,
-      501,
-      502,
-      503,
-      504,
-      505,
-      506,
-      507,
-      508,
-    ]) {
-      await AndroidAlarmManager.cancel(id);
-    }
-  }
-
-  Future<void> enableScheduler() async {
-    final prefs = await SharedPreferences.getInstance();
-
-    await prefs.setBool('scheduler_enabled', true);
-
-    await AndroidAlarmManager.oneShotAt(
-      getNextSchedulerTime(),
-      1,
-      dailySchedulerDispatcher,
-      exact: true,
-      wakeup: true,
-      allowWhileIdle: true,
-      rescheduleOnReboot: true,
     );
   }
 }

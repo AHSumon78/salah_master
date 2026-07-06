@@ -1,8 +1,8 @@
 import 'package:alarm/l10n/generated/app_localizations.dart';
 import 'package:alarm/services/app_theme_extension.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
-import 'package:adhan_dart/adhan_dart.dart';
 
 // ---------------------------------------------------------------------------
 // Pre-computed, immutable sun/moon data — calculated once outside the widget.
@@ -28,58 +28,70 @@ class SunMoonData {
     required this.fajrTimeText,
   });
 
-  static SunMoonData compute(
-    double latitude,
-    double longitude, {
-    Madhab madhab = Madhab.hanafi,
-  }) {
-    final now = DateTime.now();
-    final fmt = DateFormat('hh:mm a');
+  // মেথড চ্যানেল অ্যাসিনক্রোনাস হওয়ায় এটিকে Future মেথড করা হলো
+  static Future<SunMoonData?> fetch(double latitude, double longitude) async {
+    try {
+      // 🛰️ কটলিন সাইটের এক্সিস্টিং ডাটাবেজ চ্যানেলটি ব্যবহার করা হচ্ছে
+      const channel = MethodChannel('com.butterflydevs.salahmaster/db');
 
-    final coords = Coordinates(latitude, longitude);
-    final params = CalculationMethodParameters.muslimWorldLeague()
-      ..madhab = madhab;
+      final Map<dynamic, dynamic>? nativePrayerTimes =
+          await channel.invokeMethod('getTodayPrayerTimes', {
+        'lat': latitude,
+        'lng': longitude,
+      });
 
-    final pt = PrayerTimes(
-      coordinates: coords,
-      date: now,
-      calculationParameters: params,
-      precision: true,
-    );
+      if (nativePrayerTimes == null) return null;
 
-    final sunrise = pt.sunrise.toLocal();
-    final sunset = pt.maghrib.toLocal();
-    final fajrTime = pt.fajr.toLocal();
-    final nextSunrise = sunrise.add(const Duration(days: 1));
-    bool isDayTime;
-    double targetProgress;
+      final now = DateTime.now();
+      final fmt = DateFormat('hh:mm a');
 
-    if (now.isAfter(sunrise) && now.isBefore(sunset)) {
-      isDayTime = true;
-      final total = sunset.difference(sunrise).inSeconds.toDouble();
-      final passed = now.difference(sunrise).inSeconds.toDouble();
-      targetProgress = (passed / total).clamp(0.0, 1.0);
-    } else {
-      isDayTime = false;
-      final DateTime nightStart = now.isAfter(sunset)
-          ? sunset
-          : sunset.subtract(const Duration(days: 1));
-      final DateTime nightEnd = now.isAfter(sunset) ? nextSunrise : sunrise;
-      final total = nightEnd.difference(nightStart).inSeconds.toDouble();
-      final passed = now.difference(nightStart).inSeconds.toDouble();
-      targetProgress = (passed / total).clamp(0.0, 1.0);
+      // কটলিন থেকে আসা মিলিসেকেন্ড টাইমস্ট্যাম্পগুলো লোকাল DateTime-এ কনভার্ট করা
+      final sunrise =
+          DateTime.fromMillisecondsSinceEpoch(nativePrayerTimes['sunrise_time'])
+              .toLocal();
+      final sunset =
+          DateTime.fromMillisecondsSinceEpoch(nativePrayerTimes['maghrib_time'])
+              .toLocal(); // Maghrib মানেই সূর্যাস্ত
+      final fajrTime =
+          DateTime.fromMillisecondsSinceEpoch(nativePrayerTimes['fajr_time'])
+              .toLocal();
+
+      final nextSunrise = sunrise.add(const Duration(days: 1));
+      bool isDayTime;
+      double targetProgress;
+
+      // সূর্যোদয় ও সূর্যাস্তের ভেতরের সময় হলে সেটি দিন (DayTime)
+      if (now.isAfter(sunrise) && now.isBefore(sunset)) {
+        isDayTime = true;
+        final total = sunset.difference(sunrise).inSeconds.toDouble();
+        final passed = now.difference(sunrise).inSeconds.toDouble();
+        targetProgress = (passed / total).clamp(0.0, 1.0);
+      } else {
+        // অন্যথায় সেটি রাত (NightTime)
+        isDayTime = false;
+        final DateTime nightStart = now.isAfter(sunset)
+            ? sunset
+            : sunset.subtract(const Duration(days: 1));
+        final DateTime nightEnd = now.isAfter(sunset) ? nextSunrise : sunrise;
+        final total = nightEnd.difference(nightStart).inSeconds.toDouble();
+        final passed = now.difference(nightStart).inSeconds.toDouble();
+        targetProgress = (passed / total).clamp(0.0, 1.0);
+      }
+
+      return SunMoonData(
+        sunrise: sunrise,
+        sunset: sunset,
+        fajrTime: fajrTime,
+        isDayTime: isDayTime,
+        targetProgress: targetProgress,
+        sunriseText: fmt.format(sunrise),
+        sunsetText: fmt.format(sunset),
+        fajrTimeText: fmt.format(fajrTime),
+      );
+    } catch (e) {
+      print("Error fetching SunMoonData via MethodChannel: $e");
+      return null;
     }
-
-    return SunMoonData(
-      sunrise: sunrise,
-      sunset: sunset,
-      fajrTime: fajrTime,
-      isDayTime: isDayTime,
-      targetProgress: targetProgress,
-      sunriseText: fmt.format(sunrise),
-      sunsetText: fmt.format(sunset),
-      fajrTimeText: fmt.format(fajrTime),
-    );
   }
 }
 
@@ -214,7 +226,7 @@ class _SunMoonTrackerState extends State<SunMoonTracker>
                             final height = constraints.maxHeight;
                             final double iconSize = d.isDayTime ? 74 : 30;
                             const double edgePadding = 8;
-                            final double baselineOffset = d.isDayTime ? 25: 4;
+                            final double baselineOffset = d.isDayTime ? 25 : 4;
                             const double x0 = edgePadding;
                             final double y0 =
                                 height - (iconSize / 2) + baselineOffset;

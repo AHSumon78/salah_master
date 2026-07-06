@@ -46,242 +46,110 @@ class AlarmService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
 
         val id = intent?.getIntExtra("ALARM_ID", 0) ?: 0
-
         val isSnooze = intent?.getBooleanExtra("IS_SNOOZE", false) ?: false
-
-
-
         val db = AppDatabase.getInstance(this)
 
-
-
         CoroutineScope(Dispatchers.IO).launch {
-
             val alarm = db.alarmDao().getAlarmById(id)
 
-
-
             if (alarm != null && alarm.isActive) {
-
-
-
                 val prefs = getSharedPreferences("alarm_state", Context.MODE_PRIVATE)
-
-
-
                 val retryKey = "retry_count_$id"
-
                 var retryCount = prefs.getInt(retryKey, 0)
-
-
-
-                val displayTitle =
-
-                    if (isSnooze) "${alarm.title} (Snooze)" else alarm.title
-
-
+                val displayTitle = if (isSnooze) "${alarm.title} (Snooze)" else alarm.title
 
                 val notification = NotificationHelper.showNotification(
-
                     this@AlarmService,
-
                     alarm.id,
-
                     displayTitle
-
                 )
-
-
 
                 startForeground(alarm.id, notification)
 
-
-
                 val pm = getSystemService(POWER_SERVICE) as PowerManager
-
-
-
                 val wakeLock = pm.newWakeLock(
-
                     PowerManager.FULL_WAKE_LOCK or
-
                             PowerManager.ACQUIRE_CAUSES_WAKEUP or
-
                             PowerManager.ON_AFTER_RELEASE,
-
                     "alarm:wakelock"
-
                 )
-
-
-
                 wakeLock.acquire(10 * 60 * 1000L)
 
-
-
                 // ================= PLAY SOUND =================
-
-                SoundHelper.playAlarmSound(this@AlarmService, alarm.sound){
-
-
+                SoundHelper.playAlarmSound(this@AlarmService, alarm.sound) {
+                    
+                    // অটো-স্টপ হওয়ার সময় অ্যাক্টিভিটি ক্লোজ করার জন্য ব্রডকাস্ট পাঠানো
+                    val closeIntent = Intent("AUTO_STOP_ALARM")
+                    closeIntent.putExtra("ALARM_ID", alarm.id)
+                    sendBroadcast(closeIntent)
 
                     val actionTaken = prefs.getBoolean("user_action_taken_$id", false)
-
                     retryCount = prefs.getInt(retryKey, 0)
-
                     val snooze_times = prefs.getInt(AlarmPrefs.SNOOZE_TIME, 3)
 
                     if (!actionTaken && retryCount < snooze_times) {
-                        val snoozeMinutes =
-                            prefs.getInt(AlarmPrefs.SNOOZE, 5)
-
-                        val triggerTime =
-                            System.currentTimeMillis() +
-                                    (snoozeMinutes * 60 * 1000L)
-
-
-
+                        val snoozeMinutes = prefs.getInt(AlarmPrefs.SNOOZE, 5)
+                        val triggerTime = System.currentTimeMillis() + (snoozeMinutes * 60 * 1000L)
                         retryCount++
 
-
-
-                        prefs.edit()
-
-                            .putInt(retryKey, retryCount)
-
-                            .apply()
-
-
+                        prefs.edit().putInt(retryKey, retryCount).apply()
 
                         val snoozeIntent = Intent(this@AlarmService, AlarmReceiver::class.java).apply {
-
                             putExtra("ALARM_ID", alarm.id)
-
                             putExtra("ALARM_TITLE", alarm.title)
-
                             putExtra("IS_SNOOZE", true)
-
                             putExtra("AUTO_SNOOZE", true)
-
                         }
 
-
-
                         val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
-
-
-
                         val snoozePending = PendingIntent.getBroadcast(
-
                             this@AlarmService,
-
                             alarm.id + 90000 + retryCount,
-
                             snoozeIntent,
-
                             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-
                         )
-
-
 
                         alarmManager.setExactAndAllowWhileIdle(
-
                             AlarmManager.RTC_WAKEUP,
-
-                             triggerTime,
-
+                            triggerTime,
                             snoozePending
-
                         )
-
                     }
-
-
-
-                    // reset after max 3
 
                     if (retryCount >= 3) {
-
-                        prefs.edit()
-
-                            .remove(retryKey)
-
-                            .apply()
-
+                        prefs.edit().remove(retryKey).apply()
                     }
-
-
-
+                    
+                    // সাউন্ড শেষ হওয়ার পর সার্ভিস স্টপ করা
+                    stopSelf() 
                 }
-
-
 
                 // ================= DAILY RESCHEDULE =================
-
                 if (!isSnooze && alarm.daysMask > 0) {
-
                     AlarmScheduler().schedule(this@AlarmService, alarm)
-
                 }
-
-                if(alarm.daysMask==0){
-                    val updatedAlarm = alarm.copy(
-                                        title = alarm.title,
-                                        hour = alarm.hour,
-                                        minute = alarm.minute,
-                                        isActive = false,
-                                        isDaily = alarm.isDaily,
-                                        daysMask = alarm.daysMask,
-                                        sound = alarm.sound,
-                                        locationId = alarm.locationId
-                                    )
-                   
-                     db.alarmDao().update(updatedAlarm)
-
+                
+                if (alarm.daysMask == 0) {
+                    val updatedAlarm = alarm.copy(isActive = false)
+                    db.alarmDao().update(updatedAlarm)
                 }
-
-
 
                 withContext(Dispatchers.Main) {
-
-                    Toast.makeText(
-
-                        this@AlarmService,
-
-                        displayTitle,
-
-                        Toast.LENGTH_LONG
-
-                    ).show()
-
+                    Toast.makeText(this@AlarmService, displayTitle, Toast.LENGTH_LONG).show()
                 }
 
-
-
             } else {
-
                 stopSelf()
-
             }
-
         }
-
-
-
         return START_NOT_STICKY
-
     }
-  override fun onBind(intent: Intent?): IBinder? = null
 
-
+    override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
-
         SoundHelper.stopSound()
-
         super.onDestroy()
-
     }
 }
 
@@ -409,16 +277,20 @@ class StopAlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val id = intent.getIntExtra("ALARM_ID", -1)
 
-        // ১. ফ্ল্যাগ সেট করুন যাতে অটো-স্নুজ না হয়
+        // ১. ফ্ল্যাগ সেট করা
         val prefs = context.getSharedPreferences("alarm_state", Context.MODE_PRIVATE)
         prefs.edit().putBoolean("user_action_taken_$id", true).apply()
 
         // ২. সাউন্ড ও সার্ভিস বন্ধ করা
         SoundHelper.stopSound()
-        val serviceIntent = Intent(context, AlarmService::class.java)
-        context.stopService(serviceIntent)
+        context.stopService(Intent(context, AlarmService::class.java))
 
-        // ৩. নোটিফিকেশন রিমুভ করা
+        // ৩. অ্যাক্টিভিটি ক্লোজ করার জন্য ব্রডকাস্ট পাঠানো
+        val closeIntent = Intent("AUTO_STOP_ALARM")
+        closeIntent.putExtra("ALARM_ID", id)
+        context.sendBroadcast(closeIntent)
+
+        // ৪. নোটিফিকেশন রিমুভ করা
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (id != -1) nm.cancel(id) else nm.cancelAll()
     }

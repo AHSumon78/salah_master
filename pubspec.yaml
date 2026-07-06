@@ -52,14 +52,10 @@ dependencies:
   http: ^1.2.0
   url_launcher: ^6.3.0
   flutter_map_location_marker: ^10.2.0
-  adhan_dart: ^1.2.0
-  flutter_displaymode: ^0.6.0
+
   visibility_detector: ^0.4.0+2
-  hijri: ^3.0.0
   shared_preferences: ^2.5.5
   home_widget: ^0.7.0
-  android_alarm_manager_plus: ^5.0.0
-  flutter_local_notifications: ^22.0.1
   # workmanager: 
   #   git:
   #     url: https://github.com/fluttercommunity/flutter_workmanager.git

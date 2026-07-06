@@ -17,6 +17,7 @@ import com.butterflydevs.salahmaster.data.AlarmPrefs
 import com.butterflydevs.salahmaster.database.AppDatabase
 import com.butterflydevs.salahmaster.DatabaseMethodChannel
 import com.butterflydevs.salahmaster.WidgetMethodChannel
+import com.butterflydevs.salahmaster.PrayerTimeHijriEventMethodChannel
 
 import com.butterflydevs.salahmaster.FullScreenIntentHelper
 import com.butterflydevs.salahmaster.alarm_service.AlarmScheduler
@@ -48,6 +49,7 @@ class MainActivity : FlutterActivity() {
     private lateinit var db: AppDatabase
     private lateinit var ringtoneMethodChannel: RingtoneMethodChannel
     private lateinit var languageMethodChannel: LanguageMethodChannel
+    private var prayerChannelHandler: PrayerTimeHijriEventMethodChannel? = null
     private val fullScreenHelper by lazy { FullScreenIntentHelper(this) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -87,6 +89,7 @@ class MainActivity : FlutterActivity() {
         languageMethodChannel = LanguageMethodChannel(this)
         ringtoneMethodChannel.register(flutterEngine)
         languageMethodChannel.register(flutterEngine)
+        prayerChannelHandler = PrayerTimeHijriEventMethodChannel(flutterEngine.dartExecutor.binaryMessenger,this)
         WidgetMethodChannel(
             this,
             flutterEngine
@@ -185,6 +188,11 @@ class MainActivity : FlutterActivity() {
                 result.notImplemented()
             }
         }
+    }
+    override fun onDestroy() {
+        // অ্যাপ বন্ধ হওয়ার সময় টাইমার লিক যেন না হয় তার জন্য সেফটি ক্লিনআপ
+        prayerChannelHandler?.stopKotlinPrayerTimer()
+        super.onDestroy()
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {

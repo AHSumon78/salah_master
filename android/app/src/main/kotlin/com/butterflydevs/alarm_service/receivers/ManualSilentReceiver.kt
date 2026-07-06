@@ -20,7 +20,7 @@ class ManualSilentReceiver : BroadcastReceiver() {
 
         try {
             // ১. ফোনকে আবার আগের মতো নরমাল (Ringer) মুডে ফিরিয়ে আনা
-            audioManager.ringerMode = AudioManager.RINGER_MODE_NORMAL
+            //audioManager.ringerMode = AudioManager.RINGER_MODE_NORMAL
             
             // ২. নোটিফিকেশন প্যানেল থেকে কাউন্টডাউন নোটিফিকেশনটি রিমুভ করা (ID: 88888)
             notificationManager.cancel(88888)

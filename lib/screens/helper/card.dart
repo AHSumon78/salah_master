@@ -1,7 +1,6 @@
 import 'package:alarm/l10n/generated/app_localizations.dart';
 import 'package:alarm/models/Alarm.dart';
 import 'package:alarm/screens/commons/app_card.dart';
-import 'package:alarm/managers/SoundManager.dart';
 import 'package:alarm/screens/commons/common_switch.dart';
 import 'package:alarm/services/app_theme_extension.dart';
 import 'package:flutter/material.dart';
@@ -34,10 +33,10 @@ class AlarmCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context)!;
-    final soundName = SoundManager.getSoundName(alarm.sound);
-    final displaySound = (soundName.length > 15)
-        ? '${soundName.substring(0, 12)}...'
-        : soundName;
+    // final soundName = SoundManager.getSoundName(alarm.sound);
+    // final displaySound = (soundName.length > 15)
+    //     ? '${soundName.substring(0, 12)}...'
+    //     : soundName;
 
     return RepaintBoundary(
       child: Opacity(

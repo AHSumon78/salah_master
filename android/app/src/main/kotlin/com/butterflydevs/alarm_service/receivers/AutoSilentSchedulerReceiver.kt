@@ -33,11 +33,11 @@ class AutoSilentSchedulerReceiver : BroadcastReceiver() {
         val locationId = intent?.getIntExtra("LOCATION_ID", -1) ?: -1
         if (locationId == -1) return
 
+        // আপনার AutoSilentSchedulerReceiver-এর অন-রিসিভের একদম শেষ লাইনে এটি যুক্ত করুন:
         CoroutineScope(Dispatchers.IO).launch {
-
             val db = AppDatabase.getInstance(context)
-
-            SilentScheduler.scheduleAllSilentTimes(
+            // 🔄 কারেন্ট নামাজের কাজ শুরু হতেই পরবর্তী নামাজের জন্য ১টি মাত্র অ্যালার্ম বুক হয়ে যাবে
+            SilentScheduler.scheduleNextSilentTime(
                 context = context,
                 alarmDao = db.alarmDao(),
                 locationId = locationId

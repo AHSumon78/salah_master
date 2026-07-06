@@ -16,8 +16,10 @@ class SoundItem {
 
 class SoundManager {
   // মেথড চ্যানেল
-  static const _ringtoneChannel = MethodChannel('com.butterflydevs.salahmaster/ringtone');
-  static const _soundChannel = MethodChannel('com.butterflydevs.salahmaster/sound');
+  static const _ringtoneChannel =
+      MethodChannel('com.butterflydevs.salahmaster/ringtone');
+  static const _soundChannel =
+      MethodChannel('com.butterflydevs.salahmaster/sound');
 
   // ১. অ্যাপের নিজস্ব সাউন্ডের তালিকা
   static final List<SoundItem> appSounds = [
@@ -163,6 +165,7 @@ class SoundManager {
                                         currentlyPlaying = null;
                                       });
                                     } else {
+                                      await SoundManager.stopSound();
                                       await SoundManager.playSound(soundItem);
                                       setState(() {
                                         currentlyPlaying = soundItem.file;

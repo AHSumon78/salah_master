@@ -17,14 +17,6 @@ import android.widget.Toast
 
 class AlarmActivity : AppCompatActivity() {
     private var receiverRegistered = false
-    private val autoStopReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-       
-            Toast.makeText(context, "Auto Stop Broadcast Received!", Toast.LENGTH_SHORT).show()
-            finish()
-
-        }
-    }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)  
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -147,6 +139,23 @@ class AlarmActivity : AppCompatActivity() {
         }
         
         
+    }
+    private val autoStopReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val alarmId = intent?.getIntExtra("ALARM_ID", -1) ?: -1
+            
+            // ১. সাউন্ড বন্ধ করা (সেফটি হিসেবে)
+            SoundHelper.stopSound()
+            
+            // ২. সার্ভিস বন্ধ করা
+            val serviceIntent = Intent(context, AlarmService::class.java)
+            context?.stopService(serviceIntent)
+            
+            // ৩. অ্যাক্টিভিটি ক্লোজ করা
+            if (!isFinishing) {
+                finish()
+            }
+        }
     }
     
 }

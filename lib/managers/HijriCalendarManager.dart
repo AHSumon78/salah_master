@@ -1,17 +1,15 @@
-import 'dart:convert';
-import 'package:adhan_dart/adhan_dart.dart';
-import 'package:alarm/services/daily_once.dart';
-import 'package:alarm/services/prayer_calculation_settings.dart';
-import 'package:alarm/services/app_theme_extension.dart'; // আপনার কাস্টম থিম এক্সটেনশন
+import 'dart:async';
+
+import 'package:alarm/services/app_theme_extension.dart'; // কাস্টম থিম এক্সটেনশন ইম্পোর্ট করা হলো
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
-import 'package:http/http.dart' as http;
-import 'package:intl/intl.dart';
-import 'package:hijri/hijri_calendar.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// 🕋 হিজরি ক্যালেন্ডারের এপিআই এবং বটমশিট লজিক ম্যানেজার ক্লাস
 class HijriCalendarManager {
+  // নেটিভ মেথড চ্যানেল
+  static const _platform =
+      MethodChannel('com.butterflydevs.salahmaster/prayer_event');
+
   static String toBanglaNumber(String input) {
     const englishToBangla = {
       '0': '০',
@@ -43,30 +41,27 @@ class HijriCalendarManager {
     12: 'জিলহজ'
   };
 
+  // 🛠️ ফিক্স ১: ইংরেজি নামের স্পেশাল ক্যারেক্টার ও ডট রিমুভ করার নিখুঁত লজিক
   static String cleanHijriMonth(String month) {
     return month
-        .replaceAll('ū', 'u')
-        .replaceAll('ī', 'i')
         .replaceAll('Ḥ', 'H')
         .replaceAll('ḥ', 'h')
         .replaceAll('ā', 'a')
-        .replaceAll('Dhū al', 'Dhul')
-        .replaceAll('al-', 'al ')
+        .replaceAll('Ū', 'U')
+        .replaceAll('ū', 'u')
+        .replaceAll('Ī', 'I')
+        .replaceAll('ī', 'i')
+        .replaceAll('Dhি al', 'Dhu al')
+        .replaceAll('Dh?', 'Dhu')
+        .replaceAll('?', 'u')
         .trim();
   }
 
-  // 🔄 ১. ওল্ড মেথড (BuildContext সহ): অ্যাপের ভেতরে আগের মতোই কাজ করবে
-  // 🔥 ১. এখন আর কোনো BuildContext লাগবে না। অ্যাপ এবং ব্যাকগ্রাউন্ড দুই জায়গা থেকেই এই একটি মেথড কল করলেই হবে।
   static Future<String> getHijriDate() async {
     try {
-      // SharedPreferences থেকে ইউজারের সেভ করা ভাষা রিড করা (আপনার MyAppState এর সাথে মিল রেখে 'app_language_code')
       final prefs = await SharedPreferences.getInstance();
       final String languageCode = prefs.getString('app_language_code') ?? 'en';
-
-      // র-ডাটা নিয়ে আসা
       final data = await getHijriDateRaw();
-
-      // ফরম্যাট করে রিটার্ন করা
       return getFormattedHijriDate(data, languageCode);
     } catch (e) {
       debugPrint("Error in getHijriDate: $e");
@@ -74,13 +69,11 @@ class HijriCalendarManager {
     }
   }
 
-  // 🛠️ ২. ফরম্যাটিং মেথড (এটি আগের মতোই থাকবে, শুধু context এর জায়গায় languageCode নেয়)
   static String getFormattedHijriDate(
       Map<String, dynamic>? hijriData, String languageCode) {
     if (hijriData == null) return "Loading...";
 
     final isBangla = languageCode == 'bn';
-
     String day = hijriData['day']?.toString() ?? '--';
     String year = hijriData['year']?.toString() ?? '----';
 
@@ -91,7 +84,6 @@ class HijriCalendarManager {
       day = toBanglaNumber(day);
       year = toBanglaNumber(year);
       monthName = _hijriMonthsBn[monthNumber] ?? monthName;
-
       return "$day\t $monthName\n$year হিজরি";
     } else {
       monthName = cleanHijriMonth(monthName);
@@ -99,236 +91,42 @@ class HijriCalendarManager {
     }
   }
 
-  // 🔥 ২. নতুন ওভারলোডেড মেথড (BuildContext ছাড়া): যা ব্যাকগ্রাউন্ড থেকে কল করা যাবে
   static Future<String> getHijriDateFromBackground(String languageCode) async {
     final data = await getHijriDateRaw();
     return getFormattedHijriDate(data, languageCode);
   }
 
+  // নেটিভ মেথড চ্যানেল থেকে ডেটা রিড করার লজিক
   static Future<Map<String, dynamic>> getHijriDateRaw() async {
-    final prefs = await SharedPreferences.getInstance();
-    final adjustment = prefs.getInt("hijri_adjustment") ?? -1;
-
-    final data = await fetchAccurateHijriDate(
-      adjustment: adjustment,
-    );
-    return data!;
-  }
-  static Future<Map<String, dynamic>?> fetchAccurateHijriDate({
-  int adjustment = -1,
-}) async {
-  final prefs = await SharedPreferences.getInstance();
-
-  DateTime referenceDate = DateTime.now();
-
-  try {
-    await shouldRunLocationUpdate();
-
-    final double lat = prefs.getDouble('lat') ?? 24.3745;
-    final double lng = prefs.getDouble('lng') ?? 88.6042;
-
-    final coords = Coordinates(lat, lng);
-    final params = await getSavedPrayerCalculationParameters();
-
-    final pt = PrayerTimes(
-      coordinates: coords,
-      date: DateTime.now(),
-      calculationParameters: params,
-      precision: true,
-    );
-
-    final maghrib = pt.maghrib.toLocal();
-
-    if (DateTime.now().isAfter(maghrib)) {
-      referenceDate = referenceDate.add(const Duration(days: 1));
-    }
-  } catch (e) {
-    debugPrint("Location/Maghrib calculation failed: $e");
-  }
-
-  referenceDate = referenceDate.add(Duration(days: adjustment));
-
-  final cacheKey =
-      DateFormat('yyyy-MM-dd').format(referenceDate) + "_$adjustment";
-
-  final cachedKey = prefs.getString("cached_hijri_key");
-  final cachedJson = prefs.getString("cached_hijri_data");
-
-  // ==========================
-  // Return cached data
-  // ==========================
-  if (cachedKey == cacheKey && cachedJson != null) {
     try {
-      return Map<String, dynamic>.from(jsonDecode(cachedJson));
-    } catch (_) {}
-  }
-
-  final today = DateFormat('dd-MM-yyyy').format(referenceDate);
-
-  // ==========================
-  // Online API
-  // ==========================
-  try {
-    final url = Uri.parse("https://api.aladhan.com/v1/gToH/$today");
-
-    final response =
-        await http.get(url).timeout(const Duration(seconds: 7));
-
-    if (response.statusCode == 200) {
-      final jsonResponse = jsonDecode(response.body);
-
-      if (jsonResponse['data']?['hijri'] != null) {
-        final result = Map<String, dynamic>.from(
-          jsonResponse['data']['hijri'],
-        );
-
-        await prefs.setString(
-          "cached_hijri_key",
-          cacheKey,
-        );
-
-        await prefs.setString(
-          "cached_hijri_data",
-          jsonEncode(result),
-        );
-
-        return result;
+      final Map? rawData = await _platform.invokeMethod('getHijriDateRaw');
+      if (rawData != null) {
+        return Map<String, dynamic>.from(rawData);
       }
+    } catch (e) {
+      debugPrint("Failed to fetch Hijri data from Native: $e");
     }
-  } catch (e) {
-    debugPrint("Online Hijri Fetch Failed: $e");
+
+    return {
+      'day': '1',
+      'month': {'number': 9, 'en': 'Ramadan', 'ar': 'رمضان', 'days': 30},
+      'year': '1447'
+    };
   }
 
-  // ==========================
-  // Offline fallback
-  // ==========================
-  HijriCalendar.setLocal('en');
-
-  final localHijri = HijriCalendar.fromDate(referenceDate);
-
-  final result = {
-    'day': localHijri.hDay.toString(),
-    'month': {
-      'number': localHijri.hMonth,
-      'en': localHijri.longMonthName,
-      'ar': localHijri.longMonthName,
-      'days': localHijri.lengthOfMonth,
-    },
-    'year': localHijri.hYear.toString(),
-  };
-
-  await prefs.setString(
-    "cached_hijri_key",
-    cacheKey,
-  );
-
-  await prefs.setString(
-    "cached_hijri_data",
-    jsonEncode(result),
-  );
-
-  return result;
-}
-
-  // static Future<Map<String, dynamic>?> fetchAccurateHijriDate({
-  //   int adjustment = -1,
-  // }) async {
-  //   DateTime referenceDate = DateTime.now();
-  //   try {
-  //      final prefs = await SharedPreferences.getInstance();
-  //     await shouldRunLocationUpdate();
-  //     double lat =  prefs.getDouble('lat') ?? 24.3745;
-  //     double lng =  prefs.getDouble('lng') ?? 88.6042;
-  //     final coords = Coordinates(lat, lng);
-  //     final params = await getSavedPrayerCalculationParameters();
-  //     final pt = PrayerTimes(
-  //       coordinates: coords,
-  //       date: DateTime.now(),
-  //       calculationParameters: params,
-  //       precision: true,
-  //     );
-  //     final maghrib = pt.maghrib.toLocal();
-
-  //     if (DateTime.now().isAfter(maghrib)) {
-  //       referenceDate = referenceDate.add(const Duration(days: 1));
-  //     }
-  //   } catch (e) {
-  //     debugPrint("Location/Maghrib calculation failed: $e");
-  //   }
-
-  //   referenceDate = referenceDate.add(Duration(days: adjustment));
-  //   final today = DateFormat('dd-MM-yyyy').format(referenceDate);
-
-  //   try {
-  //     final url = Uri.parse('https://api.aladhan.com/v1/gToH/$today');
-  //     final response = await http.get(url).timeout(const Duration(seconds: 7));
-  //     if (response.statusCode == 200) {
-  //       final jsonResponse = jsonDecode(response.body);
-  //       if (jsonResponse['data']?['hijri'] != null) {
-  //         return Map<String, dynamic>.from(
-  //           jsonResponse['data']['hijri'],
-  //         );
-  //       }
-  //     }
-  //   } catch (e) {
-  //     debugPrint("Online Hijri Fetch Failed: $e");
-  //   }
-
-  //   HijriCalendar.setLocal('en');
-  //   final localHijri = HijriCalendar.fromDate(referenceDate);
-
-  //   return {
-  //     'day': localHijri.hDay.toString(),
-  //     'month': {
-  //       'number': localHijri.hMonth,
-  //       'en': localHijri.longMonthName,
-  //       'ar': localHijri.longMonthName,
-  //       'days': localHijri.lengthOfMonth,
-  //     },
-  //     'year': localHijri.hYear.toString(),
-  //   };
-  // }
-
-  // 🛠️ ৩. মডিফাইড ফরম্যাটিং মেথড: এখন আর BuildContext লাগে না, শুধু languageCode হলেই চলে!
-  // static String getFormattedHijriDate(
-  //     Map<String, dynamic>? hijriData, String languageCode) {
-  //   if (hijriData == null) return "Loading...";
-
-  //   final isBangla = languageCode == 'bn';
-
-  //   String day = hijriData['day']?.toString() ?? '--';
-  //   String year = hijriData['year']?.toString() ?? '----';
-
-  //   final int monthNumber = hijriData['month']?['number'] as int? ?? 1;
-  //   String monthName = hijriData['month']?['en']?.toString() ?? 'Month';
-
-  //   if (isBangla) {
-  //     day = toBanglaNumber(day);
-  //     year = toBanglaNumber(year);
-  //     monthName = _hijriMonthsBn[monthNumber] ?? monthName;
-
-  //     return "$day\n$monthName, $year হিজরি";
-  //   } else {
-  //     monthName = cleanHijriMonth(monthName);
-  //     return "$day\n$monthName, $year AH";
-  //   }
-  // }
-
-  /// ফুল ক্যালেন্ডার দেখানোর জন্য প্রিমিয়াম বটমশিট মেথড
+  /// সম্পূর্ণ ক্যালেন্ডার বটমশিট (সঠিক তারিখ ও বার সিঙ্ক লজিকসহ)
   static void showFullCalendarBottomSheet(
       BuildContext context, Map<String, dynamic> hijriData) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Theme.of(context).appBackground,
+      backgroundColor: Theme.of(context).appBackground, // কাস্টম ব্যাকগ্রাউন্ড
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (context) {
-        // 🌐 ১. অ্যাপের বর্তমান ভাষা চেক করা
         final isBangla = Localizations.localeOf(context).languageCode == 'bn';
 
-        // ডাটা এক্সট্র্যাক্ট করা
         String monthEn = hijriData['month']['en']?.toString() ?? '';
         final monthAr = hijriData['month']['ar']?.toString() ?? '';
         final int monthNumber = hijriData['month']?['number'] as int? ?? 1;
@@ -339,7 +137,6 @@ class HijriCalendarManager {
         final totalDays =
             int.tryParse(hijriData['month']['days']?.toString() ?? '30') ?? 30;
 
-        // 🔄 ২. ভাষা অনুযায়ী হেডার ডাটা রূপান্তর
         if (isBangla) {
           year = "${toBanglaNumber(year)} হিজরি";
           monthEn = _hijriMonthsBn[monthNumber] ?? monthEn;
@@ -348,14 +145,20 @@ class HijriCalendarManager {
           year = "$year AH";
         }
 
-        // 🗓️ ৩. ভাষা অনুযায়ী সপ্তাহের বারের নাম সেট করা
+        // 🛠️ আন্তর্জাতিক স্ট্যান্ডার্ড অনুযায়ী গ্রিড মেলাতে সপ্তাহ রবিবার (Sun) থেকে শুরু করা হলো
         final List<String> weekDays = isBangla
-            ? ['শনি', 'রবি', 'সোম', 'মঙ্গল', 'বুধ', 'বৃহ', 'শুক্র']
-            : ['Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+            ? ['রবি', 'সোম', 'মঙ্গল', 'বুধ', 'বৃহ', 'শুক্র', 'শনি']
+            : ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
         final DateTime phoneToday = DateTime.now();
+        // মাসের ১ তারিখের ইংরেজি (Gregorian) অবজেক্ট বের করা হচ্ছে
         final DateTime baseGregorianDate =
             phoneToday.subtract(Duration(days: currentDay - 1));
+
+        // 🛠️ ফিক্স ২: ১ তারিখ সপ্তাহের কী বার ছিল তার সঠিক Offset/Gap ক্যালকুলেশন
+        // রবিবার=০, সোমবার=১ ... শনিবার=৬
+        final int startOffsetGap =
+            baseGregorianDate.weekday == 7 ? 0 : baseGregorianDate.weekday;
 
         return Padding(
           padding: const EdgeInsets.all(16.0),
@@ -413,15 +216,22 @@ class HijriCalendarManager {
                   crossAxisSpacing: 6,
                   mainAxisSpacing: 6,
                 ),
-                itemCount: totalDays,
+                // 🛠️ আইটেম সংখ্যা = মাসের মোট দিন + শুরুর অফসেট গ্যাপ
+                itemCount: totalDays + startOffsetGap,
                 itemBuilder: (context, index) {
-                  final dayNum = index + 1;
+                  // শুরুর ফাঁকা দিনগুলোর জন্য খালি কনটেইনার বা রেন্ডার স্কিপ লজিক
+                  if (index < startOffsetGap) {
+                    return const SizedBox.shrink();
+                  }
+
+                  // প্রকৃত হিজরি দিনের নাম্বার হিসাব
+                  final dayNum = index - startOffsetGap + 1;
                   final bool isToday = dayNum == currentDay;
 
+                  // ১ তারিখের ইংরেজি অবজেক্টের সাথে বর্তমান ইনডেক্স মিলিয়ে নিখুঁত ইংরেজি ডেট জেনারেট
                   final correspondingGregDate =
-                      baseGregorianDate.add(Duration(days: index));
+                      baseGregorianDate.add(Duration(days: dayNum - 1));
 
-                  // 🔢 ৪. গ্রিডের ভেতরের সংখ্যাগুলোকে ডাইনামিক করা
                   String displayDayNum = dayNum.toString();
                   String gregDayNumber = correspondingGregDate.day.toString();
 
@@ -433,12 +243,12 @@ class HijriCalendarManager {
                   return Container(
                     decoration: BoxDecoration(
                       color: isToday
-                          ? Colors.teal.withValues(alpha: 0.18)
+                          ? Colors.teal.withOpacity(0.18)
                           : Theme.of(context).cardBackground,
                       border: Border.all(
                         color: isToday
                             ? Colors.tealAccent
-                            : Colors.grey.withValues(alpha: 0.3),
+                            : Colors.grey.withOpacity(0.3),
                         width: 1.2,
                       ),
                     ),
@@ -446,12 +256,12 @@ class HijriCalendarManager {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Text(
-                          displayDayNum, // ← হিজরি তারিখ (বাংলা/ইংলিশ)
+                          displayDayNum,
                           style: Theme.of(context).time.copyWith(fontSize: 16),
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          gregDayNumber, // ← ইংরেজি তারিখ (বাংলা/ইংলিশ)
+                          gregDayNumber,
                           style: Theme.of(context)
                               .time
                               .copyWith(fontSize: 10, color: Colors.grey),
@@ -470,7 +280,7 @@ class HijriCalendarManager {
   }
 }
 
-// 📱 হোম স্ক্রিনে সরাসরি কল করার জন্য স্বাধীন উইজেট
+/// ক্যালেন্ডার উইজেট টাইল (হুবহু কমেন্টের মত সুন্দর কার্ড ডিজাইন ফিরিয়ে আনা হয়েছে)
 class HijriCalendarTile extends StatefulWidget {
   const HijriCalendarTile({super.key});
 
@@ -521,22 +331,18 @@ class _HijriCalendarTileState extends State<HijriCalendarTile> {
       );
     }
 
-    // 🌐 ১. অ্যাপের বর্তমান ভাষা চেক করা
     final isBangla = Localizations.localeOf(context).languageCode == 'bn';
 
-    // ডাটা এক্সট্র্যাক্ট করা
     String day = _hijriDataCache!['day']?.toString() ?? '--';
     final int monthNumber = _hijriDataCache!['month']?['number'] as int? ?? 1;
     String monthDisplay =
         _hijriDataCache!['month']['en']?.toString() ?? 'Month';
     String year = _hijriDataCache!['year']?.toString() ?? '----';
 
-    // 🔄 ২. ভাষা অনুযায়ী ডাটা রূপান্তর করার লজিক
     if (isBangla) {
       day = HijriCalendarManager.toBanglaNumber(day);
       year = HijriCalendarManager.toBanglaNumber(year);
 
-      // বাংলা মাসের নামগুলোর ম্যাপ (আপনার ম্যানেজারের প্রাইভেট ম্যাপ থেকে সরাসরি নেওয়া)
       const Map<int, String> hijriMonthsBn = {
         1: 'মুহাররাম',
         2: 'সফর',
@@ -564,7 +370,7 @@ class _HijriCalendarTileState extends State<HijriCalendarTile> {
       child: InkWell(
         onTap: () => HijriCalendarManager.showFullCalendarBottomSheet(
             context, _hijriDataCache!),
-        splashColor: Colors.teal.withValues(alpha: 0.15),
+        splashColor: Colors.teal.withOpacity(0.15),
         child: Padding(
           padding: const EdgeInsets.all(12.0),
           child: Column(
@@ -577,7 +383,7 @@ class _HijriCalendarTileState extends State<HijriCalendarTile> {
                   Icon(Icons.calendar_month_outlined,
                       color: Theme.of(context).iconColor, size: 20),
                   Text(
-                    year, // ← ডাইনামিক হিজরি/AH বছর
+                    year,
                     style: Theme.of(context).caption.copyWith(
                           fontSize: 11,
                           fontWeight: FontWeight.bold,
@@ -587,12 +393,12 @@ class _HijriCalendarTileState extends State<HijriCalendarTile> {
               ),
               const SizedBox(height: 4),
               Text(
-                day, // ← ডাইনামিক বাংলা/ইংলিশ দিন
+                day,
                 style: Theme.of(context).time.copyWith(fontSize: 26, height: 1),
               ),
               const SizedBox(height: 4),
               Text(
-                monthDisplay, // ← ডাইনামিক বাংলা/ইংলিশ মাস
+                monthDisplay,
                 style: Theme.of(context)
                     .title
                     .copyWith(fontSize: 13, fontWeight: FontWeight.bold),

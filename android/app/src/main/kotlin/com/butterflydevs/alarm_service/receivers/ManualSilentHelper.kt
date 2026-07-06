@@ -30,22 +30,22 @@ object ManualSilentHelper {
     /**
      * ফোনকে নির্দিষ্ট মিনিটের জন্য সাইলেন্ট করার ফাংশন
      */
+    /**
+     * ফোনকে নির্দিষ্ট মিনিটের জন্য সাইলেন্ট করার ফাংশন
+     */
     fun startManualSilent(context: Context, minutes: Int) {
         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val prefs = context.getSharedPreferences("AppPrefs", Context.MODE_PRIVATE)
 
+        // সাইলেন্ট করার আগে বর্তমান সবগুলো স্টেট সেভ করা
         prefs.edit()
             .putInt("previous_ringer_mode", audioManager.ringerMode)
-            .putInt(
-                "previous_ring_volume",
-                audioManager.getStreamVolume(AudioManager.STREAM_RING)
-            )
-            .putInt(
-                "previous_media_volume",
-                audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
-            )
+            .putInt("previous_ring_volume", audioManager.getStreamVolume(AudioManager.STREAM_RING))
+            .putInt("previous_media_volume", audioManager.getStreamVolume(AudioManager.STREAM_MUSIC))
+            .putInt("previous_notif_volume", audioManager.getStreamVolume(AudioManager.STREAM_NOTIFICATION))
             .apply()
+
         // ডিএনডি পারমিশন চেক
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !notificationManager.isNotificationPolicyAccessGranted) {
             Toast.makeText(context, "Please grant Do Not Disturb Access permission first", Toast.LENGTH_LONG).show()
@@ -53,19 +53,16 @@ object ManualSilentHelper {
         }
 
         try {
-            // ১. ফোনকে সাইলেন্ট/ভাইব্রেট মুডে নেওয়া
+            // ১. ফোনকে সাইলেন্ট মোডে নেওয়া এবং সব চ্যানেল মিউট করা
             audioManager.ringerMode = AudioManager.RINGER_MODE_SILENT
-            audioManager.setStreamVolume(
-                AudioManager.STREAM_MUSIC,
-                0,
-                0
-            )
+            audioManager.setStreamVolume(AudioManager.STREAM_RING, 0, 0)
+            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, 0, 0)
+            audioManager.setStreamVolume(AudioManager.STREAM_NOTIFICATION, 0, 0)
 
             val durationMillis = minutes * 60 * 1000L
             val endTime = System.currentTimeMillis() + durationMillis
 
             // ২. SharedPreferences-এ স্টেট সেভ করা
-            val prefs = context.getSharedPreferences("AppPrefs", Context.MODE_PRIVATE)
             prefs.edit().apply {
                 putBoolean("is_manual_silent", true)
                 putLong("manual_silent_end_time", endTime)
@@ -87,10 +84,8 @@ object ManualSilentHelper {
                 alarmManager.setExact(AlarmManager.RTC_WAKEUP, endTime, pendingIntent)
             }
 
-            // ৪. কাউন্টডাউন নোটিফিকেশন দেখানো (অপ্টিমাইজড ফন্ট/সাইজ)
+            // ৪. নোটিফিকেশন এবং নচ ওভারলে দেখানো
             showCountdownNotification(context, notificationManager, endTime)
-
-            // ৫. নচের এরিয়াতে কাস্টম ওভারলে কাউন্টডাউন চালু করা
             showNotchCountdown(context, durationMillis)
 
             Toast.makeText(context, "Phone silenced for $minutes minutes", Toast.LENGTH_SHORT).show()
@@ -101,7 +96,7 @@ object ManualSilentHelper {
     }
 
     /**
-     * ইউজার যদি সময়ের আগেই ম্যানুয়াল সাইলেন্ট বন্ধ করে দিতে চায়
+     * ইউজার যদি সময়ের আগেই অথবা অ্যালার্মের মাধ্যমে সাইলেন্ট বন্ধ করে
      */
     fun stopManualSilent(context: Context) {
         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -109,45 +104,29 @@ object ManualSilentHelper {
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val prefs = context.getSharedPreferences("AppPrefs", Context.MODE_PRIVATE)
 
-        val previousRingerMode =
-            prefs.getInt(
-                "previous_ringer_mode",
-                AudioManager.RINGER_MODE_NORMAL
-            )
+        // সেভ করা ডাটাগুলো রিড করা (না থাকলে ডিফল্ট অর্ধেক ভলিউম)
+        val previousRingerMode = prefs.getInt("previous_ringer_mode", AudioManager.RINGER_MODE_NORMAL)
+        val previousRingVolume = prefs.getInt("previous_ring_volume", audioManager.getStreamMaxVolume(AudioManager.STREAM_RING) / 2)
+        val previousMediaVolume = prefs.getInt("previous_media_volume", audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC) / 2)
+        val previousNotifVolume = prefs.getInt("previous_notif_volume", audioManager.getStreamMaxVolume(AudioManager.STREAM_NOTIFICATION) / 2)
 
-        val previousRingVolume =
-            prefs.getInt(
-                "previous_ring_volume",
-                audioManager.getStreamMaxVolume(AudioManager.STREAM_RING) / 2
-            )
-
-        val previousMediaVolume =
-            prefs.getInt(
-                "previous_media_volume",
-                audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC) / 2
-            )
-        // ১. ফোন নরমাল করা
+        // ১. ফোন আগের মোডে ফেরানো
         audioManager.ringerMode = previousRingerMode
-        audioManager.setStreamVolume(
-            AudioManager.STREAM_RING,
-            previousRingVolume,
-            0
-        )
-
-        // আগের Media Volume Restore
-        audioManager.setStreamVolume(
-            AudioManager.STREAM_MUSIC,
-            previousMediaVolume,
-            0
-        )
+        audioManager.setStreamVolume(AudioManager.STREAM_RING, previousRingVolume, 0)
+        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, previousMediaVolume, 0)
+        audioManager.setStreamVolume(AudioManager.STREAM_NOTIFICATION, previousNotifVolume, 0)
 
         // ২. প্রিফারেন্স ক্লিয়ার করা
         prefs.edit().apply {
             putBoolean("is_manual_silent", false)
             remove("manual_silent_end_time")
+            remove("previous_ringer_mode")
+            remove("previous_ring_volume")
+            remove("previous_media_volume")
+            remove("previous_notif_volume")
         }.apply()
 
-        // ৩. শিডিউল করা অ্যালার্মটি ক্যানসেল করা
+        // ৩. অ্যালার্ম ক্যানসেল করা
         val intent = Intent(context, ManualSilentReceiver::class.java)
         val pendingIntent = PendingIntent.getBroadcast(
             context,
@@ -161,10 +140,8 @@ object ManualSilentHelper {
             it.cancel()
         }
 
-        // ৪. নোটিফিকেশন রিমুভ করা
+        // ৪. UI ক্লিনআপ
         notificationManager.cancel(NOTIFICATION_ID)
-
-        // ৫. নচ ভিউ এবং টাইমার রিমুভ করা
         removeNotchCountdown(context)
 
         Toast.makeText(context, "Manual silent disabled", Toast.LENGTH_SHORT).show()
