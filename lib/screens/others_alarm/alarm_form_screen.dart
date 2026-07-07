@@ -37,7 +37,7 @@ class _AlarmFormScreenState extends State<AlarmFormScreen> {
   late FixedExtentScrollController _minuteCtrl;
   late FixedExtentScrollController _periodCtrl;
 
-  static const Color _accent = Color(0xFFD0BCFF);
+  //static const Color _accent = Color(0xFFD0BCFF);
   static const Color _dim = Color(0xFF938F99);
   static const Color _divider = Color(0xFF49454F);
   // আগের লাইনটি কেটে এটি বসান

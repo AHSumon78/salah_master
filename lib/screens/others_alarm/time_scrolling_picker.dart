@@ -19,7 +19,7 @@ class TimeScrollingPicker extends StatelessWidget {
     required this.onTimeChanged,
   });
 
-  static const Color _selBg = Colors.teal;
+  //static const Color _selBg = Colors.teal;
 
   @override
   Widget build(BuildContext context) {

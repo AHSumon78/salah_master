@@ -34,6 +34,20 @@ object HijriRepository {
         "Rajab" to "রজব", "Sha'ban" to "শাবান", "Ramadan" to "রমজান", "Shawwal" to "শাওয়াল",
         "Dhu al-Qi'dah" to "জিলকদ", "Dhu al-Hijjah" to "জিলহজ্জ"
     )
+    private val hijriMonthNamesEn = listOf(
+        "Muharram",
+        "Safar",
+        "Rabi' al-awwal",
+        "Rabi' ath-thani",
+        "Jumada al-ula",
+        "Jumada al-akhirah",
+        "Rajab",
+        "Sha'ban",
+        "Ramadan",
+        "Shawwal",
+        "Dhu al-Qi'dah",
+        "Dhu al-Hijjah"
+    )
 
     // সপ্তাহের দিনের বাংলা নাম ডিকশনারি
     private val daysBn = mapOf(
@@ -181,28 +195,54 @@ object HijriRepository {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             try {
                 val localHijri = HijrahDate.from(
-                    java.time.LocalDate.parse(cacheKeyDate, DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+                    java.time.LocalDate.parse(
+                        cacheKeyDate,
+                        DateTimeFormatter.ofPattern("yyyy-MM-dd")
+                    )
                 )
-                monthMap["number"] = localHijri.get(java.time.temporal.ChronoField.MONTH_OF_YEAR)
-                monthMap["en"] = DateTimeFormatter.ofPattern("MMMM", Locale.US).format(localHijri)
-                outMap["day"] = localHijri.get(java.time.temporal.ChronoField.DAY_OF_MONTH).toString()
-                outMap["year"] = localHijri.get(java.time.temporal.ChronoField.YEAR).toString()
+
+                val monthNumber =
+                    localHijri.get(java.time.temporal.ChronoField.MONTH_OF_YEAR)
+
+                monthMap["number"] = monthNumber
+
+                // Android Formatter ব্যবহার না করে নিজের list থেকে নাম নেওয়া হচ্ছে
+                monthMap["en"] =
+                    hijriMonthNamesEn.getOrElse(monthNumber - 1) { "Muharram" }
+
+                monthMap["ar"] = ""
+
+                monthMap["days"] = 30
+
+                outMap["day"] =
+                    localHijri.get(java.time.temporal.ChronoField.DAY_OF_MONTH).toString()
+
+                outMap["year"] =
+                    localHijri.get(java.time.temporal.ChronoField.YEAR).toString()
+
             } catch (e: Exception) {
                 setStaticFallback(monthMap, outMap)
             }
         } else {
             setStaticFallback(monthMap, outMap)
         }
+
         outMap["month"] = monthMap
         return outMap
     }
 
-    private fun setStaticFallback(monthMap: HashMap<String, Any>, outMap: HashMap<String, Any>) {
-        monthMap["number"] = 1
-        monthMap["en"] = "Muharram"
-        outMap["day"] = "1"
-        outMap["year"] = "1447"
-    }
+    private fun setStaticFallback(
+    monthMap: HashMap<String, Any>,
+    outMap: HashMap<String, Any>
+        ) {
+            monthMap["number"] = 1
+            monthMap["en"] = "Muharram"
+            monthMap["ar"] = ""
+            monthMap["days"] = 30
+
+            outMap["day"] = "1"
+            outMap["year"] = "1447"
+        }
 
     private fun jsonToMap(jsonObject: JSONObject): Map<String, Any> {
         val map = HashMap<String, Any>()

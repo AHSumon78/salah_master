@@ -339,7 +339,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final prefs = await SharedPreferences.getInstance();
 
     // শুধুমাত্র Madhab পরিবর্তনের ওপর ভিত্তি করে চেক করা হচ্ছে
-    final isMadhabChanged = prefs.getBool('is_madhab_changed') ?? false;
+    final isMadhabChanged = prefs.getBool('is_madhab_changed') ?? true;
 
     // যদি মযহাব চেঞ্জ হয়, শুধুমাত্র তখনই সিঙ্ক হবে
     if (isMadhabChanged) {

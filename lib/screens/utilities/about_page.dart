@@ -262,77 +262,77 @@ class AboutPage extends StatelessWidget {
   }
 
   // ডেভেলপার প্রোফাইল রোউ
-  Widget _buildDeveloperRow(
-    BuildContext context,
-    Color textColor,
-    Color subtitleColor, {
-    required String imagePath,
-    required String name,
-    required String dept,
-    required String session,
-    required VoidCallback onPhonePressed,
-    required VoidCallback onFbPressed,
-  }) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        CircleAvatar(
-          radius: 28,
-          backgroundColor: Colors.grey.withValues(alpha: 0.2),
-          backgroundImage: AssetImage(imagePath),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                name,
-                style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    color: textColor),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                dept,
-                style: TextStyle(fontSize: 13, color: subtitleColor),
-              ),
-              Text(
-                session,
-                style: TextStyle(
-                    fontSize: 11, color: subtitleColor.withValues(alpha: 0.8)),
-              ),
-              const SizedBox(height: 6),
-              Row(
-                children: [
-                  _buildCircleActionButton(Icons.phone, onPhonePressed),
-                  const SizedBox(width: 10),
-                  _buildCircleActionButton(Icons.facebook, onFbPressed),
-                ],
-              )
-            ],
-          ),
-        ),
-      ],
-    );
-  }
+  // Widget _buildDeveloperRow(
+  //   BuildContext context,
+  //   Color textColor,
+  //   Color subtitleColor, {
+  //   required String imagePath,
+  //   required String name,
+  //   required String dept,
+  //   required String session,
+  //   required VoidCallback onPhonePressed,
+  //   required VoidCallback onFbPressed,
+  // }) {
+  //   return Row(
+  //     crossAxisAlignment: CrossAxisAlignment.start,
+  //     children: [
+  //       CircleAvatar(
+  //         radius: 28,
+  //         backgroundColor: Colors.grey.withValues(alpha: 0.2),
+  //         backgroundImage: AssetImage(imagePath),
+  //       ),
+  //       const SizedBox(width: 12),
+  //       Expanded(
+  //         child: Column(
+  //           crossAxisAlignment: CrossAxisAlignment.start,
+  //           children: [
+  //             Text(
+  //               name,
+  //               style: TextStyle(
+  //                   fontSize: 15,
+  //                   fontWeight: FontWeight.bold,
+  //                   color: textColor),
+  //             ),
+  //             const SizedBox(height: 2),
+  //             Text(
+  //               dept,
+  //               style: TextStyle(fontSize: 13, color: subtitleColor),
+  //             ),
+  //             Text(
+  //               session,
+  //               style: TextStyle(
+  //                   fontSize: 11, color: subtitleColor.withValues(alpha: 0.8)),
+  //             ),
+  //             const SizedBox(height: 6),
+  //             Row(
+  //               children: [
+  //                 _buildCircleActionButton(Icons.phone, onPhonePressed),
+  //                 const SizedBox(width: 10),
+  //                 _buildCircleActionButton(Icons.facebook, onFbPressed),
+  //               ],
+  //             )
+  //           ],
+  //         ),
+  //       ),
+  //     ],
+  //   );
+  // }
 
   // ছোট রাউন্ড বাটন (ফোন ও ফেসবুক)
-  Widget _buildCircleActionButton(IconData icon, VoidCallback onPressed) {
-    return InkWell(
-      onTap: onPressed,
-      customBorder: const CircleBorder(),
-      child: Container(
-        padding: const EdgeInsets.all(6),
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: Colors.teal.withValues(alpha: 0.1),
-        ),
-        child: Icon(icon, size: 16, color: Colors.teal),
-      ),
-    );
-  }
+  // Widget _buildCircleActionButton(IconData icon, VoidCallback onPressed) {
+  //   return InkWell(
+  //     onTap: onPressed,
+  //     customBorder: const CircleBorder(),
+  //     child: Container(
+  //       padding: const EdgeInsets.all(6),
+  //       decoration: BoxDecoration(
+  //         shape: BoxShape.circle,
+  //         color: Colors.teal.withValues(alpha: 0.1),
+  //       ),
+  //       child: Icon(icon, size: 16, color: Colors.teal),
+  //     ),
+  //   );
+  // }
 
   // কন্টাক্ট লিস্ট টাইল
   Widget _buildSupportTile(
